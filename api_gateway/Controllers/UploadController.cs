@@ -28,6 +28,8 @@ public class UploadController : ControllerBase {
       var processor = new FileProcessor(filePath);
       string extractedText = processor.ExtractText();
       bool success = await _vectorDbService.AddDocument(Guid.NewGuid().ToString(), extractedText);
+      if(!success)
+        return StatusCode(500, "Failed to store document in vector database.");
       var response = new {
         file.FileName,
         FileSize = file.Length,

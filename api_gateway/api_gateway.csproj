@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\mqtt_service\mqtt_service.csproj" />
+    <ProjectReference Include="..\vectordb\vectordb.csproj" />
   </ItemGroup>
 
 </Project>

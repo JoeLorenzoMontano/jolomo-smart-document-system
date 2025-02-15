@@ -25,6 +25,12 @@ builder.Services.AddSingleton(provider => {
 // Register Vector Database Service
 builder.Services.AddSingleton<VectorDbService>(); // Inject Vector DB service
 
+// Register TfidfEmbeddingService as an implementation of ILocalEmbeddingService
+builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
+
+// Register VectorDbService and inject ILocalEmbeddingService
+builder.Services.AddSingleton<VectorDbService>();
+
 var app = builder.Build();
 
 // Start MQTT Client (Subscribe to a test topic)

@@ -3,9 +3,16 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.12.35728.132 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "api_gateway", "api_gateway.csproj", "{5C0955C5-2B0D-4BA9-9E42-DAE20A99C2CD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "api_gateway", ".\api_gateway\api_gateway.csproj", "{5C0955C5-2B0D-4BA9-9E42-DAE20A99C2CD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "mqtt_service", "..\mqtt_service\mqtt_service.csproj", "{D8B3A6A4-C380-4732-B066-02CC67F5D74F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "mqtt_service", ".\mqtt_service\mqtt_service.csproj", "{D8B3A6A4-C380-4732-B066-02CC67F5D74F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{61D04A06-226E-4424-A55D-9F98EC5E8E5F}"
+	ProjectSection(SolutionItems) = preProject
+		docker-compose.yml = docker-compose.yml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vectordb", ".\vectordb\vectordb.csproj", "{01201BF3-E87F-4D29-9A7A-404554B4697C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +28,10 @@ Global
 		{D8B3A6A4-C380-4732-B066-02CC67F5D74F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D8B3A6A4-C380-4732-B066-02CC67F5D74F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D8B3A6A4-C380-4732-B066-02CC67F5D74F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{01201BF3-E87F-4D29-9A7A-404554B4697C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01201BF3-E87F-4D29-9A7A-404554B4697C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01201BF3-E87F-4D29-9A7A-404554B4697C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{01201BF3-E87F-4D29-9A7A-404554B4697C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
