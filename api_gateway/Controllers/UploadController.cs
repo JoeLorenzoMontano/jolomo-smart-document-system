@@ -5,9 +5,11 @@
 public class UploadController : ControllerBase {
   private readonly string _uploadsFolder = "uploads/";
   private readonly MqttClientService _mqttClientService;
+  private readonly VectorDbService _vectorDbService;
 
-  public UploadController(MqttClientService mqttClientService) {
+  public UploadController(MqttClientService mqttClientService, VectorDbService vectorDbService) {
     _mqttClientService = mqttClientService;
+    _vectorDbService = vectorDbService;
     if(!Directory.Exists(_uploadsFolder))
       Directory.CreateDirectory(_uploadsFolder);
   }
@@ -25,6 +27,7 @@ public class UploadController : ControllerBase {
       }
       var processor = new FileProcessor(filePath);
       string extractedText = processor.ExtractText();
+      bool success = await _vectorDbService.AddDocument(Guid.NewGuid().ToString(), extractedText);
       var response = new {
         file.FileName,
         FileSize = file.Length,

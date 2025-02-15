@@ -22,6 +22,9 @@ builder.Services.AddSingleton(provider => {
   );
 });
 
+// Register Vector Database Service
+builder.Services.AddSingleton<VectorDbService>(); // Inject Vector DB service
+
 var app = builder.Build();
 
 // Start MQTT Client (Subscribe to a test topic)
