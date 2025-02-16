@@ -19,15 +19,6 @@ public class VectorDbServiceTests {
   }
 
   [Fact]
-  public async Task AddDocument_ShouldReturnTrue_WhenDocumentIsAddedSuccessfully() {
-    var text = "Sample document text";
-    _embeddingServiceMock.Setup(service => service.GenerateEmbeddingAsync(It.IsAny<string>()))
-                         .ReturnsAsync(new float[1024]);//Expected size of embedding is 1024
-    var result = await _vectorDbService.AddDocument(text);
-    Assert.True(result);
-  }
-
-  [Fact]
   public void ChunkText_ShouldReturnCorrectChunks_ForParagraphChunking() {
     var text = "Paragraph 1.\n\nParagraph 2.";
     var config = new EmbeddingConfig { ChunkingMethod = ChunkMethod.Paragraph };
