@@ -97,8 +97,8 @@ public class VectorDbService {
         }
       }
       // Prioritize results that contain the exact query string or similar words
-      resultsList = resultsList.OrderByDescending(r => r.Distance)
-          .ThenByDescending(r => r.OriginalText != null && r.OriginalText.Contains(queryText, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+      resultsList = resultsList.OrderByDescending(r => r.OriginalText != null && r.OriginalText.Contains(queryText, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+          .ThenByDescending(r => r.Distance)
           .ThenByDescending(r => r.OriginalText != null ? CalculateTextSimilarity(r.OriginalText, queryText) : 0)
           .Take(topResults)
           .ToList();
