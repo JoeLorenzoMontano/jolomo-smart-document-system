@@ -27,17 +27,16 @@ public class UploadController : ControllerBase {
       }
       var processor = new FileProcessor(filePath);
       string extractedText = processor.ExtractText();
-      bool success = await _vectorDbService.AddDocument(Guid.NewGuid().ToString(), extractedText);
+      bool success = await _vectorDbService.AddDocument(extractedText);
       if(!success)
         return StatusCode(500, "Failed to store document in vector database.");
       var response = new {
         file.FileName,
         FileSize = file.Length,
         FileType = Path.GetExtension(file.FileName),
-        ExtractedText = extractedText
+        ExtractedText = extractedText,
       };
       await _mqttClientService.PublishAsync("uploads/new", $"File uploaded: {file.FileName}");
-      //await _mqttClientService.PublishAsync("uploads/status", $"Processing {file.FileName}");
       return Ok(response);
     }
     catch(Exception ex) {
@@ -45,4 +44,25 @@ public class UploadController : ControllerBase {
     }
   }
 
+  [HttpGet("search")]
+  public async Task<IActionResult> SearchDocuments([FromQuery] string query) {
+    if(string.IsNullOrEmpty(query))
+      return BadRequest("Query cannot be empty.");
+    try {
+      return Ok(await _vectorDbService.SearchDocuments(query));
+    }
+    catch(Exception ex) {
+      return StatusCode(500, $"Internal server error: {ex.Message}");
+    }
+  }
+
+  [HttpDelete("[action]")]
+  public async Task<IActionResult> ClearChromaDB() {
+    try {
+      return Ok(await _vectorDbService.ClearChromaDB());
+    }
+    catch(Exception ex) {
+      return StatusCode(500, $"Internal server error: {ex.Message}");
+    }
+  }
 }
