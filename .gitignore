@@ -399,3 +399,4 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 /api_gateway/uploads
+/angular_frontend/.vscode

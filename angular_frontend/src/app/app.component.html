@@ -1,0 +1,24 @@
+<div class="container">
+  <h2>Document Upload & Search</h2>
+
+  <div class="upload-section">
+    <input type="file" (change)="onFileSelected($event)" />
+    <button (click)="uploadFile()" [disabled]="!selectedFile">Upload</button>
+  </div>
+
+  <div class="search-section">
+    <input type="text" [(ngModel)]="searchQuery" placeholder="Enter search query" />
+    <button (click)="searchDocuments()">Search</button>
+  </div>
+
+  <div *ngIf="searchResults.length > 0">
+    <h3>Search Results</h3>
+    <ul>
+      <li *ngFor="let result of searchResults">
+        <strong>ID:</strong> {{ result.id }} <br />
+        <strong>Distance:</strong> {{ result.distance }} <br />
+        <strong>Original Text:</strong> {{ result.originalText || 'N/A' }}
+      </li>
+    </ul>
+  </div>
+</div>

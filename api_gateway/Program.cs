@@ -3,6 +3,16 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Allow CORS for requests from the Angular frontend
+builder.Services.AddCors(options => {
+  options.AddPolicy("AllowAngular",
+      policy => policy
+          .WithOrigins("http://localhost:49904") // Change this to your Angular app URL
+          .AllowAnyMethod()
+          .AllowAnyHeader()
+          .AllowCredentials());
+});
+
 // Add services to the container.
 builder.Services.AddControllers();
 
@@ -32,6 +42,9 @@ builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
 builder.Services.AddSingleton<VectorDbService>();
 
 var app = builder.Build();
+
+// Use CORS before mapping controllers
+app.UseCors("AllowAngular");
 
 // Start MQTT Client (Subscribe to a test topic)
 var mqttClientService = app.Services.GetRequiredService<MqttClientService>();
