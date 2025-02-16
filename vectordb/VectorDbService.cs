@@ -40,7 +40,6 @@ public class VectorDbService {
       ids.Add(sourceDocumentId);
       documents.Add(text);
       metadatas.Add(new Dictionary<string, object> { { "IsSourceDocument", true } });
-
       var chunks = ChunkText(text, config);
       var chunkTasks = chunks.Select(async chunk =>
       {
