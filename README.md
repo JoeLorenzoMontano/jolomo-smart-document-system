@@ -1,79 +1,77 @@
-# AI-Powered Document Processing API Gateway
+# JoLoMo Smart Document System
 
 ## Overview
-This repository contains an API Gateway designed for **file uploads, real-time messaging via MQTT, and future AI-powered enhancements**. The goal is to create a **modular and extensible document processing system** that will incorporate **LLMs, RAG (Retrieval-Augmented Generation), and intelligent automation** over time.
+The **JoLoMo Smart Document System** is a fully integrated AI-powered document management system. It enables **document ingestion, semantic search, and retrieval** using vector embeddings stored in **ChromaDB**. This system consists of multiple components working together:
+
+- **API Gateway**: Handles document uploads, processes text, and interacts with ChromaDB.
+- **Vector Database (ChromaDB)**: Stores document embeddings for fast and efficient search.
+- **Local Embedding Service**: Generates embeddings without relying on third-party services.
+- **Angular Frontend**: Provides an intuitive UI for file uploads and search queries.
+- **MQTT Integration**: Enables real-time updates and event-driven document processing.
 
 ## Features
-- **File Upload API** - Supports document uploads with **text extraction**.
-- **MQTT Integration** - Publishes events on uploads and allows real-time messaging.
-- **Embedded MQTT Broker** - A local broker for handling internal messaging.
-- **Swagger UI** - API documentation with file upload support.
-- **Extensible Design** - Future integration with LLMs and knowledge retrieval systems.
+- **Document Upload & Chunking**: Supports breaking documents into configurable chunks.
+- **Semantic Search**: Finds relevant documents based on meaning, not just keywords.
+- **Local Embedding Generation**: No reliance on third-party AI services.
+- **Full Document Storage**: Links document chunks back to the original full document.
+- **Real-Time Processing with MQTT**: Broadcasts updates and events for advanced automation.
+- **Configurable Search & Ranking**: Allows fine-tuned document retrieval.
 
-## Future Enhancements
-This project will evolve to include:
-- **LLM Integration** - Use **Ollama** for document summarization and Q&A.
-- **RAG (Retrieval-Augmented Generation)** - Implement **vector databases** for enhanced AI retrieval.
-- **Multi-Modal Data Handling** - Support for **text, images, PDFs, and structured data**.
-- **Event-Driven Processing** - Real-time document analysis using MQTT triggers.
-- **User Authentication & Authorization** - Secure API access with JWT/OAuth.
-- **Cloud & On-Prem Deployment** - Containerized services with **Docker & Kubernetes**.
+## System Architecture
+- **Frontend (Angular)** → Communicates with API Gateway
+- **Backend (ASP.NET Core)** → Manages document processing & embeddings
+- **Vector Database (ChromaDB)** → Stores embeddings and document metadata
+- **MQTT Broker** → Facilitates real-time event updates
 
-## Project Structure
-```
-📂 YourSolution
-│── 📂 api_gateway
-│   ├── UploadController.cs  # Handles file uploads & MQTT publishing
-│   ├── Program.cs           # Configures API & MQTT client
-│   ├── appsettings.json     # Stores MQTT & API settings
-│── 📂 MqttService
-│   ├── MqttBrokerService.cs # Runs embedded MQTT broker
-│   ├── MqttClientService.cs # Connects to broker & handles messages
-│   ├── Program.cs           # Starts the MQTT broker when launched
-```
-
-## Installation & Setup
+## Installation
 ### Prerequisites
-- **.NET 8** or later
-- **Mosquitto MQTT Broker** (Optional for external broker testing)
+- **.NET 8** (for API Gateway & backend services)
+- **Node.js & Angular CLI** (for frontend)
+- **Docker** (for ChromaDB & MQTT Broker)
 
-### Running the API Gateway & MQTT Broker
-1. Clone the repository:
+### Setup
+1. **Clone the repository**:
    ```sh
-   git clone https://github.com/yourusername/your-repo.git
-   cd your-repo
+   git clone https://github.com/your-repo/jolomo-smart-document-system.git
+   cd jolomo-smart-document-system
    ```
-2. Run **MqttService** (Starts the embedded broker):
+2. **Start the backend services**:
    ```sh
-   cd MqttService
+   cd api_gateway
    dotnet run
    ```
-3. Run **api_gateway** (Starts the API and MQTT client):
+3. **Start ChromaDB using Docker**:
    ```sh
-   cd ../api_gateway
-   dotnet run
+   docker-compose up -d
    ```
-4. Open **Swagger UI**:
+4. **Start the Angular frontend**:
+   ```sh
+   cd angular_frontend
+   npm install
+   ng serve --open
    ```
-   http://localhost:5003/swagger
-   ```
 
-## Testing MQTT Messaging
-To monitor MQTT messages, open a terminal and run:
-```sh
-mosquitto_sub -h localhost -t "uploads/new" -v
-```
-Then upload a file via the API to see the published message.
+## API Integration
+### **Upload Document**
+- **Endpoint:** `POST /api/upload`
+- **Functionality:** Stores document text and embeddings.
 
-## Contribution & Roadmap
-This is an **actively evolving project**, and contributions are welcome! Planned enhancements include:
-- 📌 **LLM-powered document summarization**
-- 📌 **Real-time entity extraction & knowledge graph building**
-- 📌 **Secure cloud-based deployment options**
+### **Search Documents**
+- **Endpoint:** `GET /api/upload/search`
+- **Functionality:** Retrieves semantically relevant documents.
 
-## License
-MIT License - See [LICENSE](LICENSE) for details.
+## Roadmap
+### **Planned Enhancements**
+- **RAG (Retrieval-Augmented Generation) Implementation**: Enhance search with AI-powered summarization.
+- **Advanced Query Expansion**: Improve search ranking with NLP-based techniques.
+- **Multi-Modal Embeddings**: Support text, images, and structured data.
+- **Enhanced Role-Based Access Control (RBAC)**: Secure document access per user role.
+- **Optimized Document Indexing**: Improve performance for large-scale document sets.
+- **Integration with Other AI Models**: Allow plug-and-play AI enhancements.
 
----
-📌 **Follow this repository for updates as we integrate AI-powered enhancements! 🚀**
+## Contributing
+Feel free to open an issue or submit a pull request if you would like to contribute!
+
+## Contact
+For inquiries, please reach out to `your-email@example.com`.
 
