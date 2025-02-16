@@ -1,4 +1,7 @@
 ﻿using api_gateway.Services;
+using ChromaDB.Client;
+using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,6 +43,10 @@ builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
 
 // Register VectorDbService and inject ILocalEmbeddingService
 builder.Services.AddSingleton<VectorDbService>();
+
+// Add Configs
+builder.Services.AddOptions();
+builder.Services.Configure<ChromaConfigurationOptions>(builder.Configuration.GetSection("ChromaDB"));
 
 // Register OllamaClient
 builder.Services.AddHttpClient<OllamaClient>();

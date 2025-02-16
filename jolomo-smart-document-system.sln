@@ -18,6 +18,8 @@ Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "angular_frontend", "angular
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ollama", "ollama\ollama.csproj", "{EB94C69C-D464-4244-9489-44D3DB140DE9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "unit_test", "unit_test\unit_test.csproj", "{8378CEE1-C9A8-454A-BF29-B8A73D33F929}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -46,6 +48,10 @@ Global
 		{EB94C69C-D464-4244-9489-44D3DB140DE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EB94C69C-D464-4244-9489-44D3DB140DE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EB94C69C-D464-4244-9489-44D3DB140DE9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8378CEE1-C9A8-454A-BF29-B8A73D33F929}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8378CEE1-C9A8-454A-BF29-B8A73D33F929}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8378CEE1-C9A8-454A-BF29-B8A73D33F929}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8378CEE1-C9A8-454A-BF29-B8A73D33F929}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

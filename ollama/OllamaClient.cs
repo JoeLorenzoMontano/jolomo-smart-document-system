@@ -9,26 +9,39 @@ public class OllamaClient {
     _httpClient = httpClient;
   }
 
-  public async Task<string> GenerateResponseAsync(string context, string query, string model = "llama3:latest") {
+  public async Task<string> GenerateResponseAsync(string context, string query, string model = "deepseek-r1:8b") {
     var requestBody = new {
-      model = model,
-      messages = new[] {
-        new { role = "system", content = $"You are an AI assistant. " + 
-        "Use the provided context to answer the user’s question. " +
-        "Do not use any other context and if you dont know the answer based on the provided context then state 'based on my knowledge bank I am not sure'. " + 
-        $"[[CONTEXT]]: {context}" },
-        new { role = "user", content = $"Query: {query}" }
-      },
+      model,
+      messages = new[]
+        {
+            new
+            {
+                role = "system",
+                content = "You are an AI assistant specializing in providing accurate responses based **only on the provided context**.\n" +
+                          "### Instructions:\n" +
+                          "- If the answer is found in the context, provide a clear, structured response.\n" +
+                          "- If the information is **not available in the context**, reply with:\n" +
+                          "  *'I could not find relevant information in the provided context. Please provide additional details if needed.'*\n" +
+                          "- Do **not** generate an answer using external knowledge.\n" +
+                          "- Do **not** make up information beyond the given context.\n\n" +
+                          "### Context:\n" +
+                          $"\"\"\"\n{context}\n\"\"\""
+            },
+            new { role = "user", content = $"Query: {query}" }
+        },
       stream = false
     };
+
     var json = JsonSerializer.Serialize(requestBody);
     var content = new StringContent(json, Encoding.UTF8, "application/json");
+    _httpClient.Timeout = Timeout.InfiniteTimeSpan;
     var response = await _httpClient.PostAsync(_ollamaUrl, content);
     response.EnsureSuccessStatusCode();
     var responseContent = await response.Content.ReadAsStringAsync();
     var responseData = JsonSerializer.Deserialize<OllamaResponse>(responseContent);
     return responseData?.choices?.FirstOrDefault()?.message?.content ?? "No response generated.";
   }
+
 }
 
 

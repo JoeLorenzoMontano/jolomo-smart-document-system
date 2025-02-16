@@ -1,4 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 [Route("api/upload")]
 [ApiController]
@@ -71,13 +73,13 @@ public class UploadController : ControllerBase {
   }
 
   [HttpGet("search-rag")]
-  public async Task<string> SearchWithRAG([FromQuery] string query, [FromQuery] int topResults = 5) {
+  public async Task<IActionResult> SearchWithRAG([FromQuery] string query, [FromQuery] int topResults = 5) {
     var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
     var results = await _vectorDbService.SearchDocuments(queryEmbedding, query, topResults, includeOriginalText: true, includeOriginalDocumentText: true);
     if(results.Count == 0)
-      return "No relevant documents found.";
-    var context = string.Join("\n\n", results.Select(r => r.OriginalDocumentText));
-    return await _ollamaClient.GenerateResponseAsync(context, query);
+      return NotFound("No relevant documents found.");
+    var context = string.Join("\n\n", results.DistinctBy(x => x.OriginalDocumentId).Select(r => r.OriginalDocumentText));
+    return Ok(JsonSerializer.Serialize(await _ollamaClient.GenerateResponseAsync(context, query)));
   }
 
 }

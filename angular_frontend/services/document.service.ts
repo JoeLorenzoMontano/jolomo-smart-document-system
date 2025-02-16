@@ -17,7 +17,6 @@ export class DocumentService {
     return this.http.post(`${this.apiUrl}`, formData);
   }
 
-  /** ✅ Searches for documents based on the query text */
   searchDocuments(query: string, topResults: number = 5, includeOriginalText: boolean = true): Observable<any> {
     let params = new HttpParams()
       .set('query', query);
@@ -26,4 +25,10 @@ export class DocumentService {
 
     return this.http.get(`${this.apiUrl}/search`, { params });
   }
+
+  searchWithRAG(query: string): Observable<any> {
+    let params = new HttpParams().set('query', query);
+    return this.http.get(`${this.apiUrl}/search-rag`, { params });
+  }
+
 }

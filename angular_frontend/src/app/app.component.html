@@ -9,7 +9,10 @@
   <div class="search-section">
     <input type="text" [(ngModel)]="searchQuery" placeholder="Enter search query" />
     <button (click)="searchDocuments()">Search</button>
+    <button (click)="searchRag()">Search RAG</button>
   </div>
+
+  <div *ngIf="searchResultRag" [innerHTML]="searchResultRag"></div>
 
   <div *ngIf="searchResults.length > 0">
     <h3>Search Results</h3>
