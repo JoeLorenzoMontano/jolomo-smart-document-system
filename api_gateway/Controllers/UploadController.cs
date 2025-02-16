@@ -6,10 +6,14 @@ public class UploadController : ControllerBase {
   private readonly string _uploadsFolder = "uploads/";
   private readonly MqttClientService _mqttClientService;
   private readonly VectorDbService _vectorDbService;
+  private readonly ILocalEmbeddingService _embeddingService;
+  private readonly OllamaClient _ollamaClient;
 
-  public UploadController(MqttClientService mqttClientService, VectorDbService vectorDbService) {
+  public UploadController(MqttClientService mqttClientService, VectorDbService vectorDbService, ILocalEmbeddingService embeddingService, OllamaClient OllamaClient) {
     _mqttClientService = mqttClientService;
     _vectorDbService = vectorDbService;
+    _embeddingService = embeddingService;
+    _ollamaClient = OllamaClient;
     if(!Directory.Exists(_uploadsFolder))
       Directory.CreateDirectory(_uploadsFolder);
   }
@@ -65,4 +69,15 @@ public class UploadController : ControllerBase {
       return StatusCode(500, $"Internal server error: {ex.Message}");
     }
   }
+
+  [HttpGet("search-rag")]
+  public async Task<string> SearchWithRAG([FromQuery] string query, [FromQuery] int topResults = 5) {
+    var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
+    var results = await _vectorDbService.SearchDocuments(queryEmbedding, query, topResults, includeOriginalText: true, includeOriginalDocumentText: true);
+    if(results.Count == 0)
+      return "No relevant documents found.";
+    var context = string.Join("\n\n", results.Select(r => r.OriginalDocumentText));
+    return await _ollamaClient.GenerateResponseAsync(context, query);
+  }
+
 }

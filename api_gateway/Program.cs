@@ -41,6 +41,9 @@ builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
 // Register VectorDbService and inject ILocalEmbeddingService
 builder.Services.AddSingleton<VectorDbService>();
 
+// Register OllamaClient
+builder.Services.AddHttpClient<OllamaClient>();
+
 var app = builder.Build();
 
 // Use CORS before mapping controllers

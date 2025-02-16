@@ -117,7 +117,6 @@ public class VectorDbService {
     return textWords.Intersect(queryWords, StringComparer.OrdinalIgnoreCase).Count();
   }
 
-
   public async Task<List<SearchResult>> SearchDocuments(string query) {
     return await SearchDocuments(await _embeddingService.GenerateEmbeddingAsync(query), query);
   }
