@@ -1,4 +1,5 @@
 ﻿using ChromaDB.Client;
+using System.Reflection.Metadata;
 
 public class VectorDbService {
   private readonly ChromaClient _chromaClient;
@@ -21,17 +22,26 @@ public class VectorDbService {
   public async Task<bool> AddDocument(string text, EmbeddingConfig? config=null) {
     config ??= _embeddingConfig;
     try {
-      var chunks = ChunkText(text, config);
       var embeddings = new List<ReadOnlyMemory<float>>();
       var ids = new List<string>();
       var documents = new List<string>();
+      var metadatas = new List<Dictionary<string, object>>();
+      float[] embedding = await _embeddingService.GenerateEmbeddingAsync(text);
+      embeddings.Add(new ReadOnlyMemory<float>(embedding));
+      var sourceDocumentId = Guid.NewGuid().ToString();
+      ids.Add(sourceDocumentId);
+      documents.Add(text);
+      metadatas.Add(new Dictionary<string, object> { { "IsSourceDocument", true } });
+      var chunks = ChunkText(text, config);
       foreach(var chunk in chunks) {
-        float[] embedding = await _embeddingService.GenerateEmbeddingAsync(chunk);
+        embedding = await _embeddingService.GenerateEmbeddingAsync(chunk);
         embeddings.Add(new ReadOnlyMemory<float>(embedding));
-        ids.Add(Guid.NewGuid().ToString());
+        var documentId = Guid.NewGuid().ToString();
+        ids.Add(documentId);
         documents.Add(chunk);
+        metadatas.Add(new Dictionary<string, object> { { "OriginalDocumentId", sourceDocumentId } });
       }
-      await _collectionClient.Add(ids, embeddings, documents: documents);
+      await _collectionClient.Add(ids, embeddings, documents: documents, metadatas: metadatas);
       Console.WriteLine($"[VectorDbService] Added {chunks.Count} chunked documents to ChromaDB.");
       return true;
     }
@@ -63,7 +73,7 @@ public class VectorDbService {
     return chunks;
   }
 
-  public async Task<List<SearchResult>> SearchDocuments(float[] queryEmbedding, string queryText, int topResults = 5, bool includeOriginalText = true) {
+  public async Task<List<SearchResult>> SearchDocuments(float[] queryEmbedding, string queryText, int topResults = 5, bool includeOriginalText = true, bool includeOriginalDocumentText = false) {
     try {
       var queryEmbeddings = new List<ReadOnlyMemory<float>> { new ReadOnlyMemory<float>(queryEmbedding) };
       var queryResults = await _collectionClient.Query(queryEmbeddings, include: ChromaQueryInclude.Metadatas | ChromaQueryInclude.Distances | (includeOriginalText ? ChromaQueryInclude.Documents : 0));
@@ -73,6 +83,15 @@ public class VectorDbService {
           var searchResult = new SearchResult { Id = entry.Id, Distance = entry.Distance };
           if(includeOriginalText && entry.Document != null) {
             searchResult.OriginalText = entry.Document;
+          }
+          if(entry.Metadata != null && entry.Metadata.ContainsKey("OriginalDocumentId")) {
+            searchResult.OriginalDocumentId = entry.Metadata["OriginalDocumentId"].ToString();
+            if(includeOriginalDocumentText && searchResult.OriginalDocumentId != null) {
+              var originalDocResult = await _collectionClient.Get([searchResult.OriginalDocumentId], include: ChromaGetInclude.Documents);
+              if(originalDocResult != null && originalDocResult.Count > 0) {
+                searchResult.OriginalDocumentText = originalDocResult.FirstOrDefault()?.Document ?? "[[ERROR]]";
+              }
+            }
           }
           resultsList.Add(searchResult);
         }
