@@ -48,7 +48,21 @@ export class AppComponent {
     if (!this.searchQuery) return;
 
     this.documentService.searchWithRAG(this.searchQuery).subscribe(result => {
-      this.searchResultRag = this.sanitizer.bypassSecurityTrustHtml(result);
+      const formatted = this.formatStructuredText(result);
+      this.searchResultRag = this.sanitizer.bypassSecurityTrustHtml(formatted); 
     });
+  }
+
+  formatStructuredText(text: string): string {
+    let formattedText = text
+      .replace(/<think>(.*?)<\/think>/gi, '<i>$1</i>')  // Italicize <think> content
+      .replace(/###\s?(.*?)(?=\n|$)/g, '<h3>$1</h3>')  // Convert ### Headers to <h3>
+      .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')  // Bold text
+      .replace(/(\d+)\.\s(.*?)(?=\n|$)/g, '<h3>$1. $2</h3>')  // Convert numbered items to headers
+      .replace(/\n{2,}/g, '<br><br>')  // Preserve new lines
+      .replace(/-\s(.*?)(?=\n|$)/g, '<ul><li>$1</li></ul>');  // Convert bullet points into lists
+    // Fix list formatting (merging consecutive <ul>)
+    formattedText = formattedText.replace(/<\/ul>\n<ul>/g, '');
+    return formattedText;
   }
 }

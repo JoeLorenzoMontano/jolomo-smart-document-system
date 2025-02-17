@@ -41,16 +41,14 @@ public class VectorDbService {
       documents.Add(text);
       metadatas.Add(new Dictionary<string, object> { { "IsSourceDocument", true } });
       var chunks = ChunkText(text, config);
-      var chunkTasks = chunks.Select(async chunk =>
-      {
+      foreach(var chunk in chunks) {
         embedding = await _embeddingService.GenerateEmbeddingAsync(chunk);
         embeddings.Add(new ReadOnlyMemory<float>(embedding));
         var documentId = Guid.NewGuid().ToString();
         ids.Add(documentId);
         documents.Add(chunk);
         metadatas.Add(new Dictionary<string, object> { { "OriginalDocumentId", sourceDocumentId } });
-      });
-      await Task.WhenAll(chunkTasks);
+      }
       await _collectionClient.Add(ids, embeddings, documents: documents, metadatas: metadatas);
       Console.WriteLine($"[VectorDbService] Added {chunks.Count} chunked documents to ChromaDB.");
       return true;
