@@ -2,6 +2,7 @@
 using FuzzySharp;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Text.Json;
 
 public class VectorDbService {
@@ -26,7 +27,7 @@ public class VectorDbService {
     _collectionClient = new ChromaCollectionClient(collection, _configOptions, _httpClient);
   }
 
-  public async Task<bool> AddDocument(string text, List<string>? listMetaData = null, EmbeddingConfig? config = null) {
+  public async Task<bool> AddDocument(string text, Dictionary<string, object>? dictMetaData = null, EmbeddingConfig? config = null) {
     config ??= _embeddingConfig;
     try {
       var embeddings = new List<ReadOnlyMemory<float>>();
@@ -38,10 +39,9 @@ public class VectorDbService {
       var sourceDocumentId = Guid.NewGuid().ToString();
       ids.Add(sourceDocumentId);
       documents.Add(text);
-      metadatas.Add(new Dictionary<string, object> { 
-        { "IsSourceDocument", true },
-        { "Meta", string.Join(", ", listMetaData) }
-      });
+      dictMetaData ??= [];
+      dictMetaData.Add("IsSourceDocument", true);
+      metadatas.Add(dictMetaData);
       // Cache original document text
       await _cacheService.SetAsync($"doc:{sourceDocumentId}", text);
       var chunks = ChunkText(text, config);
@@ -51,7 +51,7 @@ public class VectorDbService {
         var documentId = Guid.NewGuid().ToString();
         ids.Add(documentId);
         documents.Add(chunk);
-        metadatas.Add(new Dictionary<string, object> { 
+        metadatas.Add(new Dictionary<string, object> {
           { "OriginalDocumentId", sourceDocumentId } 
         });
         // Cache chunk embeddings

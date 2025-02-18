@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
-using System.Threading.Tasks;
+
 [ApiController]
 [Route("api/search")]
 public class SearchController(VectorDbService vectorDbService, ILocalEmbeddingService embeddingService, OllamaClient ollamaClient, RedisCacheService cacheService) : ControllerBase {
@@ -34,6 +34,11 @@ public class SearchController(VectorDbService vectorDbService, ILocalEmbeddingSe
     }
   }
 
+  [HttpGet("variations")]
+  public async Task<IActionResult> QueryInputVariations([FromQuery] string query) {
+    return Ok(await _ollamaClient.GenerateQueryVariations(query));
+  }
+
   [HttpGet("rag")]
   public async Task<IActionResult> SearchWithRAG([FromQuery] string query, [FromQuery] int topResults = 5) {
     if(string.IsNullOrWhiteSpace(query))
@@ -52,6 +57,7 @@ public class SearchController(VectorDbService vectorDbService, ILocalEmbeddingSe
         combinedResults.AddRange(results);
       }
       var uniqueResults = combinedResults
+          .Where(x => x.OriginalDocumentText!=null)
           .DistinctBy(x => x.OriginalDocumentId)
           .OrderByDescending(x => x.Distance)
           //.OrderByDescending(x => ...)//TODO: Handle reranking differently
@@ -59,7 +65,7 @@ public class SearchController(VectorDbService vectorDbService, ILocalEmbeddingSe
           .ToList();
       if(uniqueResults.Count == 0)
         return NotFound(new { message = "No relevant documents found." });
-      var context = string.Join("\n\n", uniqueResults.Select(r => r.OriginalDocumentText));
+      var context = _vectorDbService.ExtractRelevantContext(query, uniqueResults);
       var llmResponse = await _ollamaClient.GenerateResponseAsync(context, query);
       var response = new RAGResponse {
         Query = query,

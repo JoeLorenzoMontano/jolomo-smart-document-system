@@ -33,7 +33,8 @@ public class UploadController : ControllerBase {
       }
       var processor = new FileProcessor(filePath);
       string extractedText = processor.ExtractText();
-      bool success = await _vectorDbService.AddDocument(extractedText);
+      var dictMetaData = await _ollamaClient.ExtractMetadata(extractedText);
+      bool success = await _vectorDbService.AddDocument(extractedText, dictMetaData);
       if(!success)
         return StatusCode(500, "Failed to store document in vector database.");
       var response = new {

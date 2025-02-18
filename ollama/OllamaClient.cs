@@ -100,9 +100,9 @@ public class OllamaClient {
     return queries.Distinct().ToList();
   }
 
-  public async Task<string> ExtractMetadata(string text, string model = "chnaaam/santa-keyword-extractor", int? max_tokens = null) {
+  public async Task<Dictionary<string, object>> ExtractMetadata(string text, string model = "mistral:7b", int? max_tokens = null) {
     if(string.IsNullOrWhiteSpace(text))
-      return "";
+      return [];
     var requestBody = new {
       model,
       messages = new[]
@@ -110,12 +110,8 @@ public class OllamaClient {
                 new
                 {
                     role = "system",
-                    content = "You are an AI metadata extraction assistant. Your task is to analyze the given text and extract relevant metadata in a structured format. " +
-                              "\n\nRules:\n" +
-                              "1. Identify key entities (e.g., people, places, topics, keywords).\n" +
-                              "2. Extract metadata fields such as word count, character count, and topics covered.\n" +
-                              "3. Format the output as a **JSON object** with clearly defined keys.\n" +
-                              "4. Only return structured data, do not include explanations or additional text.\n"
+                    content = "You are an AI assistant that extracts structured metadata from text. " +
+                              "You must follow the defined JSON schema strictly without adding explanations or extra formatting."
                 },
                 new
                 {
@@ -123,7 +119,28 @@ public class OllamaClient {
                     content = $"Extract metadata from this document:\n\n\"\"\"\n{text}\n\"\"\""
                 }
             },
-      max_tokens
+      max_tokens,
+      response_format = new {
+        type = "json_schema",
+        seed = 08142024,
+        json_schema = new {
+          name = "document_metadata",
+          schema = new {
+            type = "object",
+            properties = new Dictionary<string, object>
+              {
+                  { "named_entities", new { type = "string" } },
+                  { "category", new { type = "string" } },
+                  { "keywords", new { type = "string" } },
+                  { "word_count", new { type = "integer" } },
+                  { "character_length", new { type = "integer" } }
+              },
+            required = new[] { "named_entities", "category", "keywords", "word_count", "character_length" },
+            additionalProperties = false
+          },
+          strict = true
+        }
+      }
     };
     var json = JsonSerializer.Serialize(requestBody);
     var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -132,9 +149,19 @@ public class OllamaClient {
     var responseContent = await response.Content.ReadAsStringAsync();
     var responseData = JsonSerializer.Deserialize<OllamaResponse>(responseContent);
     string responseString = responseData?.choices?.FirstOrDefault()?.message?.content ?? "";
-    return RemoveThinkRegions(responseString);//TODO: Make optional
-    //var responseData = JsonSerializer.Deserialize<Dictionary<string, object>>(responseContent);
-    //return responseData ?? new Dictionary<string, object>();
+    var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(responseString);
+    return NormalizeMetadata(metadata);
+  }
+
+  private Dictionary<string, object> NormalizeMetadata(Dictionary<string, object> metadata) {
+    var fieldsToConvert = new HashSet<string> { "named_entities", "keywords" };
+    foreach(var field in fieldsToConvert) {
+      if(metadata.ContainsKey(field) && metadata[field] is JsonElement element && element.ValueKind == JsonValueKind.Array) {
+        var concatenatedValues = string.Join("|", element.EnumerateArray().Select(e => e.GetString()).Where(s => !string.IsNullOrEmpty(s)));
+        metadata[field] = concatenatedValues;
+      }
+    }
+    return metadata;
   }
 
 
