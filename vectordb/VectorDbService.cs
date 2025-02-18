@@ -26,7 +26,7 @@ public class VectorDbService {
     _collectionClient = new ChromaCollectionClient(collection, _configOptions, _httpClient);
   }
 
-  public async Task<bool> AddDocument(string text, EmbeddingConfig? config = null) {
+  public async Task<bool> AddDocument(string text, List<string>? listMetaData = null, EmbeddingConfig? config = null) {
     config ??= _embeddingConfig;
     try {
       var embeddings = new List<ReadOnlyMemory<float>>();
@@ -38,7 +38,10 @@ public class VectorDbService {
       var sourceDocumentId = Guid.NewGuid().ToString();
       ids.Add(sourceDocumentId);
       documents.Add(text);
-      metadatas.Add(new Dictionary<string, object> { { "IsSourceDocument", true } });
+      metadatas.Add(new Dictionary<string, object> { 
+        { "IsSourceDocument", true },
+        { "Meta", string.Join(", ", listMetaData) }
+      });
       // Cache original document text
       await _cacheService.SetAsync($"doc:{sourceDocumentId}", text);
       var chunks = ChunkText(text, config);
@@ -48,7 +51,9 @@ public class VectorDbService {
         var documentId = Guid.NewGuid().ToString();
         ids.Add(documentId);
         documents.Add(chunk);
-        metadatas.Add(new Dictionary<string, object> { { "OriginalDocumentId", sourceDocumentId } });
+        metadatas.Add(new Dictionary<string, object> { 
+          { "OriginalDocumentId", sourceDocumentId } 
+        });
         // Cache chunk embeddings
         await _cacheService.SetAsync($"embedding:{documentId}", JsonSerializer.Serialize(embedding));
       }
@@ -66,11 +71,11 @@ public class VectorDbService {
     var chunks = new ConcurrentBag<string>();
     switch(config.ChunkingMethod) {
       case ChunkMethod.Paragraph:
-        var paragraphs = text.Split(new[] { "\n\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var paragraphs = text.Split(["\n \n"], StringSplitOptions.RemoveEmptyEntries);
         Parallel.ForEach(paragraphs, paragraph => chunks.Add(paragraph));
         break;
       case ChunkMethod.Newline:
-        var lines = text.Split(new[] { "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var lines = text.Split(["\n"], StringSplitOptions.RemoveEmptyEntries);
         Parallel.ForEach(lines, line => chunks.Add(line));
         break;
       case ChunkMethod.Word:
@@ -172,5 +177,20 @@ public class VectorDbService {
     finally {
       _semaphore.Release();
     }
+  }
+
+  public string ExtractRelevantContext(string query, List<SearchResult> results, int maxContextSize = 2000) {
+    List<string> filteredSections = [];
+    foreach(var result in results) {
+      if(string.IsNullOrWhiteSpace(result.OriginalDocumentText))
+        continue;
+      var paragraphs = result.OriginalDocumentText.Split("\n \n");
+      var relevantParagraphs = paragraphs
+          .Where(p => Fuzz.PartialRatio(p, query) > 50)
+          .ToList();
+      filteredSections.AddRange(relevantParagraphs);
+    }
+    string context = string.Join("\n\n", filteredSections);
+    return context.Length > maxContextSize ? context.Substring(0, maxContextSize) : context;
   }
 }
