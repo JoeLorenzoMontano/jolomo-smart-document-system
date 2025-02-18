@@ -48,8 +48,10 @@ export class AppComponent {
     if (!this.searchQuery) return;
 
     this.documentService.searchWithRAG(this.searchQuery).subscribe(result => {
-      const formatted = this.formatStructuredText(result);
-      this.searchResultRag = this.sanitizer.bypassSecurityTrustHtml(formatted); 
+      if (result) {
+        const formatted = this.formatStructuredText(result.llmResponse);
+        this.searchResultRag = this.sanitizer.bypassSecurityTrustHtml(formatted); 
+      }
     });
   }
 

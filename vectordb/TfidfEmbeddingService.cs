@@ -10,18 +10,14 @@ public class TfidfEmbeddingService : ILocalEmbeddingService {
   }
 
   public async Task<float[]> GenerateEmbeddingAsync(string text) {
-    return await Task.Run(() =>
-    {
+    return await Task.Run(() => {
       var tokens = TokenizeText(text);
       var vector = new float[_vectorSize];
-
       foreach(var token in tokens) {
         if(!_vocab.ContainsKey(token))
           _vocab[token] = _vocab.Count % _vectorSize;
-
         vector[_vocab[token]] += 1;
       }
-
       return Normalize(vector);
     });
   }

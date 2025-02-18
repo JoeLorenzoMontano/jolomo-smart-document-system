@@ -2,8 +2,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-[Route("api/upload")]
 [ApiController]
+[Route("api/upload")]
 public class UploadController : ControllerBase {
   private readonly string _uploadsFolder = "uploads/";
   private readonly MqttClientService _mqttClientService;
@@ -50,18 +50,6 @@ public class UploadController : ControllerBase {
     }
   }
 
-  [HttpGet("search")]
-  public async Task<IActionResult> SearchDocuments([FromQuery] string query) {
-    if(string.IsNullOrEmpty(query))
-      return BadRequest("Query cannot be empty.");
-    try {
-      return Ok(await _vectorDbService.SearchDocuments(query));
-    }
-    catch(Exception ex) {
-      return StatusCode(500, $"Internal server error: {ex.Message}");
-    }
-  }
-
   [HttpDelete("[action]")]
   public async Task<IActionResult> ClearChromaDB() {
     try {
@@ -70,16 +58,6 @@ public class UploadController : ControllerBase {
     catch(Exception ex) {
       return StatusCode(500, $"Internal server error: {ex.Message}");
     }
-  }
-
-  [HttpGet("search-rag")]
-  public async Task<IActionResult> SearchWithRAG([FromQuery] string query, [FromQuery] int topResults = 5) {
-    var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
-    var results = await _vectorDbService.SearchDocuments(queryEmbedding, query, topResults, includeOriginalText: true, includeOriginalDocumentText: true);
-    if(results.Count == 0)
-      return NotFound("No relevant documents found.");
-    var context = string.Join("\n\n", results.DistinctBy(x => x.OriginalDocumentId).Select(r => r.OriginalDocumentText));
-    return Ok(JsonSerializer.Serialize(await _ollamaClient.GenerateResponseAsync(context, query)));
   }
 
 }

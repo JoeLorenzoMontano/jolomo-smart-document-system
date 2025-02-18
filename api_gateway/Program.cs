@@ -1,7 +1,5 @@
 ﻿using api_gateway.Services;
 using ChromaDB.Client;
-using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
-using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options => {
   options.AddPolicy("AllowAngular",
       policy => policy
-          .WithOrigins("http://localhost:49904") // Change this to your Angular app URL
+          .WithOrigins("http://localhost:49904")
           .AllowAnyMethod()
           .AllowAnyHeader()
           .AllowCredentials());
@@ -35,14 +33,14 @@ builder.Services.AddSingleton(provider => {
   );
 });
 
+// Register VectorDbService and inject ILocalEmbeddingService
+builder.Services.AddSingleton<RedisCacheService>();
+
 // Register Vector Database Service
-builder.Services.AddSingleton<VectorDbService>(); // Inject Vector DB service
+builder.Services.AddSingleton<VectorDbService>();
 
 // Register TfidfEmbeddingService as an implementation of ILocalEmbeddingService
 builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
-
-// Register VectorDbService and inject ILocalEmbeddingService
-builder.Services.AddSingleton<VectorDbService>();
 
 // Add Configs
 builder.Services.AddOptions();

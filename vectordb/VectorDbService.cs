@@ -1,11 +1,8 @@
 ﻿using ChromaDB.Client;
-using System.Collections.Concurrent;
-using System.Reflection.Metadata;
-using System.Threading.Tasks;
 using FuzzySharp;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Http;
-using System.Net.Http;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 public class VectorDbService {
   private readonly ChromaClient _chromaClient;
@@ -14,15 +11,17 @@ public class VectorDbService {
   private readonly string _collectionName;
   private readonly ChromaCollectionClient _collectionClient;
   private readonly ILocalEmbeddingService _embeddingService;
+  private readonly RedisCacheService _cacheService;
   private static EmbeddingConfig _embeddingConfig = new();
   private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
-  public VectorDbService(ILocalEmbeddingService embeddingService, IConfiguration configuration, IHttpClientFactory httpClientFactory) {
+  public VectorDbService(ILocalEmbeddingService embeddingService, IConfiguration configuration, IHttpClientFactory httpClientFactory, RedisCacheService cacheService) {
     _collectionName = configuration?["ChromaDB:CollectionName"] ?? "documents";
     _configOptions = new ChromaConfigurationOptions(uri: configuration?["ChromaDB:Uri"] ?? "http://localhost:8000/api/v1/");
     _httpClient = httpClientFactory.CreateClient();
     _chromaClient = new ChromaClient(_configOptions, _httpClient);
     _embeddingService = embeddingService;
+    _cacheService = cacheService;
     var collection = _chromaClient.GetOrCreateCollection(_collectionName).Result;
     _collectionClient = new ChromaCollectionClient(collection, _configOptions, _httpClient);
   }
@@ -40,6 +39,8 @@ public class VectorDbService {
       ids.Add(sourceDocumentId);
       documents.Add(text);
       metadatas.Add(new Dictionary<string, object> { { "IsSourceDocument", true } });
+      // Cache original document text
+      await _cacheService.SetAsync($"doc:{sourceDocumentId}", text);
       var chunks = ChunkText(text, config);
       foreach(var chunk in chunks) {
         embedding = await _embeddingService.GenerateEmbeddingAsync(chunk);
@@ -48,6 +49,8 @@ public class VectorDbService {
         ids.Add(documentId);
         documents.Add(chunk);
         metadatas.Add(new Dictionary<string, object> { { "OriginalDocumentId", sourceDocumentId } });
+        // Cache chunk embeddings
+        await _cacheService.SetAsync($"embedding:{documentId}", JsonSerializer.Serialize(embedding));
       }
       await _collectionClient.Add(ids, embeddings, documents: documents, metadatas: metadatas);
       Console.WriteLine($"[VectorDbService] Added {chunks.Count} chunked documents to ChromaDB.");
@@ -72,8 +75,7 @@ public class VectorDbService {
         break;
       case ChunkMethod.Word:
         var words = text.Split(' ');
-        Parallel.For(0, words.Length, i =>
-        {
+        Parallel.For(0, words.Length, i => {
           if(i % (config.ChunkSize - config.Overlap) == 0) {
             var chunk = string.Join(" ", words.Skip(i).Take(config.ChunkSize));
             chunks.Add(chunk);
@@ -84,8 +86,13 @@ public class VectorDbService {
     return [.. chunks];
   }
 
-  public async Task<List<SearchResult>> SearchDocuments(float[] queryEmbedding, string queryText, int topResults = 5, bool includeOriginalText = true, bool includeOriginalDocumentText = false) {
+  public async Task<List<SearchResult>> SearchDocuments(float[] queryEmbedding, string queryText, int topResults = 5, bool includeOriginalText = true, bool includeOriginalDocumentText = true) {
     try {
+      string cacheKey = $"search:{queryText}";
+      var cachedResults = await _cacheService.GetAsync(cacheKey);
+      if(!string.IsNullOrEmpty(cachedResults)) {
+        return JsonSerializer.Deserialize<List<SearchResult>>(cachedResults) ?? [];
+      }
       var queryEmbeddings = new List<ReadOnlyMemory<float>> { new ReadOnlyMemory<float>(queryEmbedding) };
       var queryResults = await _collectionClient.Query(queryEmbeddings, include: ChromaQueryInclude.Metadatas | ChromaQueryInclude.Distances | (includeOriginalText ? ChromaQueryInclude.Documents : ChromaQueryInclude.None));
       var resultsList = new List<SearchResult>();
@@ -98,22 +105,31 @@ public class VectorDbService {
           if(entry.Metadata != null && entry.Metadata.ContainsKey("OriginalDocumentId")) {
             searchResult.OriginalDocumentId = entry.Metadata["OriginalDocumentId"].ToString();
             if(includeOriginalDocumentText && searchResult.OriginalDocumentId != null) {
-              var originalDocResult = await _collectionClient.Get([ searchResult.OriginalDocumentId ], include: ChromaGetInclude.Documents);
-              if(originalDocResult != null && originalDocResult.Count > 0) {
-                searchResult.OriginalDocumentText = originalDocResult.FirstOrDefault()?.Document ?? "[[ERROR]]";
+              var originalDocText = await _cacheService.GetAsync($"doc:{searchResult.OriginalDocumentId}");
+              if(string.IsNullOrEmpty(originalDocText)) {
+                // If not found in Redis, retrieve from ChromaDB
+                var originalDocResult = await _collectionClient.Get([searchResult.OriginalDocumentId], include: ChromaGetInclude.Documents);
+                if(originalDocResult != null && originalDocResult.Count > 0) {
+                  originalDocText = originalDocResult.FirstOrDefault()?.Document ?? "[[ERROR]]";
+                  // Store in Redis for future requests
+                  await _cacheService.SetAsync(cacheKey, originalDocText);
+                }
+                else {
+                  originalDocText = "[[ERROR: Document not found]]";
+                }
               }
+              searchResult.OriginalDocumentText = originalDocText;
             }
           }
           resultsList.Add(searchResult);
         }
       }
-      // Prioritize results that contain the exact query string or similar words
-      resultsList = resultsList.OrderByDescending(r => r.OriginalText != null && r.OriginalText.Contains(queryText, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
-          .ThenByDescending(r => r.Distance)
-          .ThenByDescending(r => r.OriginalText != null ? Fuzz.Ratio(r.OriginalText, queryText) : 0) // Using FuzzySharp for text similarity
+      resultsList = resultsList.OrderByDescending(r => r.Distance)//TODO: Handle reranking differently
+          .ThenByDescending(r => r.OriginalText != null ? Fuzz.Ratio(r.OriginalText, queryText) : 0)
           .Take(topResults)
           .ToList();
-
+      // Cache search results
+      await _cacheService.SetAsync(cacheKey, JsonSerializer.Serialize(resultsList));
       return resultsList;
     }
     catch(Exception ex) {
@@ -123,7 +139,23 @@ public class VectorDbService {
   }
 
   public async Task<List<SearchResult>> SearchDocuments(string query) {
-    return await SearchDocuments(await _embeddingService.GenerateEmbeddingAsync(query), query);
+    string embeddingCacheKey = $"embedding:{query}";
+    // Check Redis for cached embedding
+    var cachedEmbeddingJson = await _cacheService.GetAsync(embeddingCacheKey);
+    float[] queryEmbedding;
+    if(!string.IsNullOrEmpty(cachedEmbeddingJson)) {
+      // Deserialize and use the cached embedding
+      queryEmbedding = JsonSerializer.Deserialize<float[]>(cachedEmbeddingJson);
+      Console.WriteLine("[VectorDbService] Retrieved query embedding from cache.");
+    }
+    else {
+      // Generate new embedding if not in cache
+      queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
+      // Cache the new embedding for future queries
+      await _cacheService.SetAsync(embeddingCacheKey, JsonSerializer.Serialize(queryEmbedding));
+      Console.WriteLine("[VectorDbService] Cached new query embedding.");
+    }
+    return await SearchDocuments(queryEmbedding, query);
   }
 
   public async Task<bool> ClearChromaDB() {

@@ -15,6 +15,18 @@ services:
     volumes:
       - chromadb_data:/chroma/data
 
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+
 volumes:
   chromadb_data:
+    driver: local
+  redis_data:
     driver: local
