@@ -46,6 +46,39 @@ public class OllamaClient {
     return responseData?.choices?.FirstOrDefault()?.message?.content ?? "No response generated.";
   }
 
+  public async Task<string> SummarizeTextAsync(string text, string model = "mistral:7b", int? max_tokens = null) {
+    if(string.IsNullOrWhiteSpace(text))
+      return "Error: No input text provided.";
+    var requestBody = new {
+      model,
+      messages = new[]
+        {
+            new
+            {
+                role = "system",
+                content = "You are an AI assistant that specializes in summarization.\n" +
+                          "### 🔹 **Summarization Rules (STRICTLY FOLLOW):**\n" +
+                          "1. **You MUST preserve all key details, including major and minor facts.**\n" +
+                          "2. **You MUST include all relevant quotes, figures, and statistics.**\n" +
+                          "3. **You MUST ensure that the meaning of the original text is not altered.**\n" +
+                          "4. **DO NOT add opinions, interpretations, or external information.**\n" +
+                          "5. **DO NOT remove any crucial context that affects understanding.**\n\n" +
+                          "### 🔹 **Text to Summarize:**\n" +
+                          $"\"\"\"\n{text}\n\"\"\""
+            },
+            new { role = "user", content = "Provide a detailed yet concise summary following all the above rules." }
+        },
+      max_tokens
+    };
+    var json = JsonSerializer.Serialize(requestBody);
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+    var response = await _httpClient.PostAsync($"{_ollamaUrl}/chat/completions", content);
+    response.EnsureSuccessStatusCode();
+    var responseContent = await response.Content.ReadAsStringAsync();
+    var responseData = JsonSerializer.Deserialize<OllamaResponse>(responseContent);
+    return RemoveThinkRegions(responseData?.choices?.FirstOrDefault()?.message?.content ?? "No summary generated.");
+  }
+
   public async Task<float[]> GenerateEmbeddingAsync(string input) {
     var requestBody = new {
       model = "text-embedding-ada-002",
@@ -98,6 +131,66 @@ public class OllamaClient {
       queries.Add($"{keywords[i]} {keywords[i + 1]}");
     }
     return queries.Distinct().ToList();
+  }
+
+  public async Task<Dictionary<string, object>> ExpandMetadata(string text, string model = "mistral:7b", int? max_tokens = null) {
+    if(string.IsNullOrWhiteSpace(text))
+      return new Dictionary<string, object>();
+    var requestBody = new {
+      model,
+      messages = new[]
+        {
+            new
+            {
+                role = "system",
+                content = "You are an AI assistant that expands user-provided text with additional related vocabulary and terminology.\n" +
+                          "Your output will be used for matching documents in a database.\n" +
+                          "Strictly follow the JSON schema format and do not include explanations or extra formatting.\n" +
+                          "Property 'named_entities' should only include; individuals, businesses, entity or specific names.\n" +
+                          "Property 'category' should only include the general catigorical tags that are associated to the input. " +
+                          "Property 'keywords' should only include keywords directly used in the input that are critical. "
+            },
+            new
+            {
+                role = "user",
+                content = $"Expand on the following user input with related terminology and vocabulary:\n\n\"\"\"\n{text}\n\"\"\""
+            }
+        },
+      max_tokens,
+      response_format = new {
+        type = "json_schema",
+        seed = 08142024,
+        json_schema = new {
+          name = "expanded_metadata",
+          schema = new {
+            type = "object",
+            properties = new Dictionary<string, object>
+                    {
+                        { "original_text", new { type = "string" } },
+                        { "expanded_text", new { type = "string" } },
+                        { "related_terms", new { type = "string" } },
+                        { "named_entities", new { type = "string" } },
+                        { "category", new { type = "string" } },
+                        { "keywords", new { type = "string" } },
+                        { "word_count", new { type = "integer" } },
+                        { "character_length", new { type = "integer" } }
+                    },
+            required = new[] { "original_text", "expanded_text", "related_terms", "named_entities", "category", "keywords", "word_count", "character_length" },
+            additionalProperties = false
+          },
+          strict = true
+        }
+      }
+    };
+    var json = JsonSerializer.Serialize(requestBody);
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+    var response = await _httpClient.PostAsync($"{_ollamaUrl}/chat/completions", content);
+    response.EnsureSuccessStatusCode();
+    var responseContent = await response.Content.ReadAsStringAsync();
+    var responseData = JsonSerializer.Deserialize<OllamaResponse>(responseContent);
+    string responseString = responseData?.choices?.FirstOrDefault()?.message?.content ?? "";
+    var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(responseString);
+    return NormalizeMetadata(metadata);
   }
 
   public async Task<Dictionary<string, object>> ExtractMetadata(string text, string model = "mistral:7b", int? max_tokens = null) {

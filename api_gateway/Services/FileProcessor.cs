@@ -32,7 +32,7 @@ public class FileProcessor {
     string text = "";
 
     for(int i = 1; i <= reader.NumberOfPages; i++) {
-      text += PdfTextExtractor.GetTextFromPage(reader, i) + "\n";
+      text += PdfTextExtractor.GetTextFromPage(reader, i, new LocationTextExtractionStrategy()) + "\n";
     }
     return text;
   }

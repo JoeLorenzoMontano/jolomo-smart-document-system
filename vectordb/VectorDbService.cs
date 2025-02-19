@@ -3,6 +3,7 @@ using FuzzySharp;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 public class VectorDbService {
@@ -39,9 +40,9 @@ public class VectorDbService {
       var sourceDocumentId = Guid.NewGuid().ToString();
       ids.Add(sourceDocumentId);
       documents.Add(text);
-      dictMetaData ??= [];
-      dictMetaData.Add("IsSourceDocument", true);
-      metadatas.Add(dictMetaData);
+      var dictSourceDoc = dictMetaData?.Keys.ToDictionary(_ => _, _ => dictMetaData[_]) ?? [];
+      dictSourceDoc.Add("IsSourceDocument", true);
+      metadatas.Add(dictSourceDoc);
       // Cache original document text
       await _cacheService.SetAsync($"doc:{sourceDocumentId}", text);
       var chunks = ChunkText(text, config);
@@ -51,9 +52,9 @@ public class VectorDbService {
         var documentId = Guid.NewGuid().ToString();
         ids.Add(documentId);
         documents.Add(chunk);
-        metadatas.Add(new Dictionary<string, object> {
-          { "OriginalDocumentId", sourceDocumentId } 
-        });
+        var dictChunkData = dictMetaData?.Keys.ToDictionary(_ => _, _ => dictMetaData[_]) ?? [];
+        dictChunkData.Add("OriginalDocumentId", sourceDocumentId);
+        metadatas.Add(dictChunkData);
         // Cache chunk embeddings
         await _cacheService.SetAsync($"embedding:{documentId}", JsonSerializer.Serialize(embedding));
       }
@@ -87,37 +88,88 @@ public class VectorDbService {
           }
         });
         break;
+      case ChunkMethod.Overlapping:
+        return ChunkText(text);
     }
     return [.. chunks];
   }
 
-  public async Task<List<SearchResult>> SearchDocuments(float[] queryEmbedding, string queryText, int topResults = 5, bool includeOriginalText = true, bool includeOriginalDocumentText = true) {
+  public static List<string> ChunkText(string text, int chunkSize = 300, int overlap = 50) {
+    if(string.IsNullOrWhiteSpace(text))
+      return new List<string>();
+    var words = text.Split(' ');
+    var chunks = new List<string>();
+    for(int i = 0; i < words.Length; i += (chunkSize - overlap)) {
+      var chunkWords = words.Skip(i).Take(chunkSize).ToArray();
+      string chunk = string.Join(" ", chunkWords);
+      // Ensure the chunk ends at a logical boundary (period or new line)
+      if(i + chunkSize < words.Length && !chunk.EndsWith('.') && !chunk.EndsWith('?') && !chunk.EndsWith('!') && !chunk.EndsWith('\n')) {
+        int lastBreak = Math.Max(chunk.LastIndexOf('.'), chunk.LastIndexOf('\n'));
+        if(lastBreak != -1)
+          chunk = chunk.Substring(0, lastBreak + 1); // Trim up to the last period or new line
+      }
+      chunks.Add(chunk.Trim());
+    }
+    return chunks;
+  }
+
+  public async Task<List<SearchResult>> SearchDocuments(
+    float[] queryEmbedding,
+    string queryText,
+    int topResults = 5,
+    bool includeOriginalText = true,
+    bool includeOriginalDocumentText = true,
+    string? categoryFilter = null,
+    string? keywordsFilter = null,
+    string? namedEntitiesFilter = null) {
     try {
-      string cacheKey = $"search:{queryText}";
+      // Generate a cache key including filters
+      string cacheKey = $"search:{queryText}:{categoryFilter ?? "none"}:{keywordsFilter ?? "none"}:{namedEntitiesFilter ?? "none"}";
+      // Check if results are already cached
       var cachedResults = await _cacheService.GetAsync(cacheKey);
       if(!string.IsNullOrEmpty(cachedResults)) {
-        return JsonSerializer.Deserialize<List<SearchResult>>(cachedResults) ?? [];
+        return JsonSerializer.Deserialize<List<SearchResult>>(cachedResults) ?? new List<SearchResult>();
       }
+      // Construct metadata filters for ChromaDB
+      var metadataFilters = new Dictionary<string, string>();
+      if(!string.IsNullOrEmpty(categoryFilter))
+        metadataFilters["category"] = categoryFilter;
+      if(!string.IsNullOrEmpty(keywordsFilter))
+        metadataFilters["keywords"] = keywordsFilter;
+      if(!string.IsNullOrEmpty(namedEntitiesFilter))
+        metadataFilters["named_entities"] = namedEntitiesFilter;
       var queryEmbeddings = new List<ReadOnlyMemory<float>> { new ReadOnlyMemory<float>(queryEmbedding) };
-      var queryResults = await _collectionClient.Query(queryEmbeddings, include: ChromaQueryInclude.Metadatas | ChromaQueryInclude.Distances | (includeOriginalText ? ChromaQueryInclude.Documents : ChromaQueryInclude.None));
+      var queryResults = await _collectionClient.Query(
+        queryEmbeddings,
+        //where: ,
+        include: ChromaQueryInclude.Metadatas | ChromaQueryInclude.Distances | (includeOriginalText ? ChromaQueryInclude.Documents : ChromaQueryInclude.None)
+      );
       var resultsList = new List<SearchResult>();
       foreach(var result in queryResults) {
         foreach(var entry in result) {
           var searchResult = new SearchResult { Id = entry.Id, Distance = entry.Distance };
-          if(includeOriginalText && entry.Document != null) {
+          if(includeOriginalText && entry.Document != null)
             searchResult.OriginalText = entry.Document;
-          }
           if(entry.Metadata != null && entry.Metadata.ContainsKey("OriginalDocumentId")) {
             searchResult.OriginalDocumentId = entry.Metadata["OriginalDocumentId"].ToString();
             if(includeOriginalDocumentText && searchResult.OriginalDocumentId != null) {
               var originalDocText = await _cacheService.GetAsync($"doc:{searchResult.OriginalDocumentId}");
               if(string.IsNullOrEmpty(originalDocText)) {
                 // If not found in Redis, retrieve from ChromaDB
-                var originalDocResult = await _collectionClient.Get([searchResult.OriginalDocumentId], include: ChromaGetInclude.Documents);
+                var originalDocResult = await _collectionClient.Get([searchResult.OriginalDocumentId], include: ChromaGetInclude.Documents | ChromaGetInclude.Metadatas);
                 if(originalDocResult != null && originalDocResult.Count > 0) {
-                  originalDocText = originalDocResult.FirstOrDefault()?.Document ?? "[[ERROR]]";
+                  var doc = originalDocResult.FirstOrDefault();
+                  originalDocText = doc?.Document ?? "[[ERROR]]";
+                  searchResult.OriginalDocumentMetadata = doc?.Metadata;
+                  //if(doc.Metadata != null && doc.Metadata.TryGetValue("named_entities", out object value) && value is string) {
+                  //  var x = value.ToString().Split(" ");
+                  //  var y = namedEntitiesFilter.Split(" ");
+                  //  if(!x.Any(value => y.Contains(value))) {
+                  //    continue;
+                  //  }
+                  //}
                   // Store in Redis for future requests
-                  await _cacheService.SetAsync(cacheKey, originalDocText);
+                  await _cacheService.SetAsync($"doc:{searchResult.OriginalDocumentId}", originalDocText);
                 }
                 else {
                   originalDocText = "[[ERROR: Document not found]]";
@@ -129,7 +181,8 @@ public class VectorDbService {
           resultsList.Add(searchResult);
         }
       }
-      resultsList = resultsList.OrderByDescending(r => r.Distance)//TODO: Handle reranking differently
+      // Apply reranking and filtering (if needed)
+      resultsList = resultsList.OrderByDescending(r => r.Distance) // TODO: Implement proper reranking
           .ThenByDescending(r => r.OriginalText != null ? Fuzz.Ratio(r.OriginalText, queryText) : 0)
           .Take(topResults)
           .ToList();
@@ -143,7 +196,11 @@ public class VectorDbService {
     }
   }
 
-  public async Task<List<SearchResult>> SearchDocuments(string query) {
+  public async Task<List<SearchResult>> SearchDocuments(string query,
+    string? categoryFilter = null,
+    string? keywordsFilter = null,
+    string? namedEntitiesFilter = null)
+  {
     string embeddingCacheKey = $"embedding:{query}";
     // Check Redis for cached embedding
     var cachedEmbeddingJson = await _cacheService.GetAsync(embeddingCacheKey);
@@ -160,7 +217,7 @@ public class VectorDbService {
       await _cacheService.SetAsync(embeddingCacheKey, JsonSerializer.Serialize(queryEmbedding));
       Console.WriteLine("[VectorDbService] Cached new query embedding.");
     }
-    return await SearchDocuments(queryEmbedding, query);
+    return await SearchDocuments(queryEmbedding, query, categoryFilter: categoryFilter, keywordsFilter: keywordsFilter, namedEntitiesFilter: namedEntitiesFilter);
   }
 
   public async Task<bool> ClearChromaDB() {

@@ -4,4 +4,5 @@
   public string? OriginalText { get; internal set; }
   public string? OriginalDocumentId { get; set; }
   public string? OriginalDocumentText { get; internal set; }
+  public Dictionary<string, object>? OriginalDocumentMetadata { get; set; }
 }
