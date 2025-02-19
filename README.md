@@ -3,6 +3,7 @@
 ## Overview
 The **JoLoMo Smart Document System** is a fully integrated AI-powered document management system. It enables **document ingestion, semantic search, and retrieval** using vector embeddings stored in **ChromaDB**. This system consists of multiple components working together:
 
+- **RAG**: Query and interact with data from uploaded documents via our retrieval and Ollama LLM integration.
 - **API Gateway**: Handles document uploads, processes text, and interacts with ChromaDB.
 - **Vector Database (ChromaDB)**: Stores document embeddings for fast and efficient search.
 - **Local Embedding Service**: Generates embeddings without relying on third-party services.
