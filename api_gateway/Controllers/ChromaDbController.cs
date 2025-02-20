@@ -14,8 +14,6 @@ public class ChromaDbController : ControllerBase {
   public ChromaDbController() {
     var configOptions = new ChromaConfigurationOptions(uri: "http://localhost:8000/api/v1/");
     _chromaClient = new ChromaClient(configOptions, new HttpClient());
-
-    // Ensure the collection exists or create it
     var collection = _chromaClient.GetOrCreateCollection(_collectionName).Result;
     _collectionClient = new ChromaCollectionClient(collection, configOptions, new HttpClient());
   }

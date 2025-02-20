@@ -11,12 +11,14 @@ public class VectorDbServiceTests {
   private readonly IConfiguration _configuration;
   private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
   private readonly VectorDbService _vectorDbService;
+  private readonly Mock<RedisCacheService> _redisCacheServiceMock;
   private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
   private readonly HttpClient _httpClient;
 
   public VectorDbServiceTests() {
     _embeddingServiceMock = new Mock<ILocalEmbeddingService>();
     _httpClientFactoryMock = new Mock<IHttpClientFactory>();
+    _redisCacheServiceMock = new Mock<RedisCacheService>();
     _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
     _httpMessageHandlerMock.Protected()
         .Setup<Task<HttpResponseMessage>>(
@@ -32,7 +34,7 @@ public class VectorDbServiceTests {
         });
     _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
     _httpClientFactoryMock.Setup(factory => factory.CreateClient(It.IsAny<string>())).Returns(_httpClient);
-    _vectorDbService = new VectorDbService(_embeddingServiceMock.Object, _configuration, _httpClientFactoryMock.Object);
+    _vectorDbService = new VectorDbService(_embeddingServiceMock.Object, _configuration, _httpClientFactoryMock.Object, _redisCacheServiceMock.Object);
   }
 
   [Fact]

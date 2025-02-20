@@ -133,6 +133,45 @@ public class OllamaClient {
     return queries.Distinct().ToList();
   }
 
+  public async Task<List<string>> GeneratePossibleQuestions(string text, string model = "mistral:7b", int? max_tokens = null) {
+    var requestBody = new {
+      model,
+      messages = new[]
+        {
+            new
+            {
+                role = "system",
+                content = "You are an AI question generator. Your task is to generate a list of relevant questions that could be asked based on the given text.\n" +
+                          "### Instructions:\n" +
+                          "- Identify key points, facts, or concepts from the text.\n" +
+                          "- Generate **clear and concise** questions that could be asked about the text.\n" +
+                          "- Ensure that the questions cover **both major and minor details**.\n" +
+                          "- Ensure that **names are preserved**\n" +
+                          "- **Limit the output to 10 or fewer questions**.\n" +
+                          "- Output the questions as a **comma-separated list**.\n" +
+                          "- Do **not** generate explanations or additional formatting, just return the questions.\n"
+            },
+            new { role = "user", content = $"Generate possible questions from this text: \"{text}\"" }
+        },
+      stream = false,
+      max_tokens
+    };
+    var json = JsonSerializer.Serialize(requestBody);
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+    var response = await _httpClient.PostAsync($"{_ollamaUrl}/chat/completions", content);
+    response.EnsureSuccessStatusCode();
+    var responseContent = await response.Content.ReadAsStringAsync();
+    var responseData = JsonSerializer.Deserialize<OllamaResponse>(responseContent);
+    string questionString = responseData?.choices?.FirstOrDefault()?.message?.content ?? "";
+    questionString = RemoveThinkRegions(questionString); // TODO: Make optional
+    var questions = questionString.Split('\n')
+        .Select(q => q.Trim())
+        .Where(q => !string.IsNullOrEmpty(q))
+        .Take(10) // Ensure at most 10 questions
+        .ToList();
+    return questions;
+  }
+
   public async Task<Dictionary<string, object>> ExpandMetadata(string text, string model = "mistral:7b", int? max_tokens = null) {
     if(string.IsNullOrWhiteSpace(text))
       return new Dictionary<string, object>();
@@ -257,7 +296,41 @@ public class OllamaClient {
     return metadata;
   }
 
-
+  public async Task<bool> IsAnswerRelevant(string query, string answer, string model = "mistral:7b", int? max_tokens = null) {
+    if(string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(answer))
+      return false;
+    var requestBody = new {
+      model,
+      messages = new[]
+    {
+        new
+        {
+            role = "system",
+            content = "You are an AI assistant that determines whether a given answer sufficiently addresses a user's query.\n" +
+                      "Respond with only the word **true** or **false**, with no extra text or formatting.\n" +
+                      "- If the answer fully or mostly satisfies the query, return **true**.\n" +
+                      "- If the answer is irrelevant, incomplete, or does not fully address the query, return **false**.\n" +
+                      "Do not provide explanations, reasoning, or any additional output—only return true or false."
+        },
+        new
+        {
+            role = "user",
+            content = $"Does the following answer sufficiently address the given query? Respond only with 'true' or 'false'.\n\n" +
+                      $"### Query:\n\"{query}\"\n\n" +
+                      $"### Answer:\n\"{answer}\"\n"
+        }
+    },
+      max_tokens,
+    };
+    var json = JsonSerializer.Serialize(requestBody);
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+    var response = await _httpClient.PostAsync($"{_ollamaUrl}/chat/completions", content);
+    response.EnsureSuccessStatusCode();
+    var responseContent = await response.Content.ReadAsStringAsync();
+    var responseData = JsonSerializer.Deserialize<OllamaResponse>(responseContent);
+    string responseString = responseData?.choices?.FirstOrDefault()?.message?.content ?? "";
+    return JsonSerializer.Deserialize<bool>(responseString);
+  }
 
 
   public static string RemoveThinkRegions(string input) {

@@ -28,8 +28,13 @@ public class VectorDbService {
     _collectionClient = new ChromaCollectionClient(collection, _configOptions, _httpClient);
   }
 
-  public async Task<bool> AddDocument(string text, Dictionary<string, object>? dictMetaData = null, EmbeddingConfig? config = null) {
+  public async Task<bool> AddDocument(string text, Dictionary<string, object>? dictMetaData = null,
+    EmbeddingConfig? config = null,
+    Func<string, Task<string?>>? funcSummarizeChunk = null,
+    Func<string, Task<List<string>?>>? funcGenQuestionsForChunk = null) {
     config ??= _embeddingConfig;
+    funcSummarizeChunk ??= (str) => Task.FromResult<string?>(null);
+    funcGenQuestionsForChunk ??= (str) => Task.FromResult<List<string>?>(null);
     try {
       var embeddings = new List<ReadOnlyMemory<float>>();
       var ids = new List<string>();
@@ -40,26 +45,53 @@ public class VectorDbService {
       var sourceDocumentId = Guid.NewGuid().ToString();
       ids.Add(sourceDocumentId);
       documents.Add(text);
-      var dictSourceDoc = dictMetaData?.Keys.ToDictionary(_ => _, _ => dictMetaData[_]) ?? [];
+      var dictSourceDoc = dictMetaData?.Keys.ToDictionary(_ => _, _ => dictMetaData[_]) ?? new Dictionary<string, object>();
       dictSourceDoc.Add("IsSourceDocument", true);
       metadatas.Add(dictSourceDoc);
-      // Cache original document text
       await _cacheService.SetAsync($"doc:{sourceDocumentId}", text);
       var chunks = ChunkText(text, config);
-      foreach(var chunk in chunks) {
+      for(int i = 0; i < chunks.Count; i++) {
+        var chunk = chunks[i];
+        string summary = await funcSummarizeChunk(chunk) ?? "";
+        List<string> questions = await funcGenQuestionsForChunk(chunk) ?? new List<string>();
         embedding = await _embeddingService.GenerateEmbeddingAsync(chunk);
         embeddings.Add(new ReadOnlyMemory<float>(embedding));
-        var documentId = Guid.NewGuid().ToString();
-        ids.Add(documentId);
+        var chunkDocumentId = Guid.NewGuid().ToString();
+        ids.Add(chunkDocumentId);
         documents.Add(chunk);
-        var dictChunkData = dictMetaData?.Keys.ToDictionary(_ => _, _ => dictMetaData[_]) ?? [];
+        var dictChunkData = dictMetaData?.Keys.ToDictionary(_ => _, _ => dictMetaData[_]) ?? new Dictionary<string, object>();
         dictChunkData.Add("OriginalDocumentId", sourceDocumentId);
+        dictChunkData.Add("ChunkDocumentId", chunkDocumentId);
+        dictChunkData.Add("ChunkIdx", i);
         metadatas.Add(dictChunkData);
-        // Cache chunk embeddings
-        await _cacheService.SetAsync($"embedding:{documentId}", JsonSerializer.Serialize(embedding));
+        await _cacheService.SetAsync($"embedding:{chunkDocumentId}", JsonSerializer.Serialize(embedding));
+        // Store summary as its own entry
+        var summaryEmbedding = await _embeddingService.GenerateEmbeddingAsync(summary);
+        embeddings.Add(new ReadOnlyMemory<float>(summaryEmbedding));
+        var summaryId = Guid.NewGuid().ToString();
+        ids.Add(summaryId);
+        documents.Add(summary);
+        metadatas.Add(new Dictionary<string, object> {
+                { "IsSummary", true },
+                { "OriginalDocumentId", sourceDocumentId },
+                { "ChunkDocumentId", chunkDocumentId }
+            });
+        // Store questions as separate entries
+        foreach(var question in questions) {
+          var questionEmbedding = await _embeddingService.GenerateEmbeddingAsync(question);
+          embeddings.Add(new ReadOnlyMemory<float>(questionEmbedding));
+          var questionId = Guid.NewGuid().ToString();
+          ids.Add(questionId);
+          documents.Add(question);
+          metadatas.Add(new Dictionary<string, object> {
+                    { "IsQuestion", true },
+                    { "OriginalDocumentId", sourceDocumentId },
+                    { "ChunkDocumentId", chunkDocumentId }
+                });
+        }
       }
       await _collectionClient.Add(ids, embeddings, documents: documents, metadatas: metadatas);
-      Console.WriteLine($"[VectorDbService] Added {chunks.Count} chunked documents to ChromaDB.");
+      Console.WriteLine($"[VectorDbService] Added {chunks.Count} chunked documents + summaries/questions to ChromaDB.");
       return true;
     }
     catch(Exception ex) {
@@ -148,26 +180,34 @@ public class VectorDbService {
       foreach(var result in queryResults) {
         foreach(var entry in result) {
           var searchResult = new SearchResult { Id = entry.Id, Distance = entry.Distance };
+          if(entry.Metadata.TryGetValue("IsSourceDocument", out _)) {
+            searchResult.DataType = RagDataType.SourceDocument;
+          }
+          else if(entry.Metadata.TryGetValue("ChunkIdx", out _)) {
+            searchResult.DataType = RagDataType.Chunk;
+          }
+          else if(entry.Metadata.TryGetValue("IsSummary", out _)) {
+            searchResult.DataType = RagDataType.ChunkSummary;
+          }
+          else if(entry.Metadata.TryGetValue("IsQuestion", out _)) {
+            searchResult.DataType = RagDataType.ChunkQuesiton;
+          }
+          searchResult.OriginalChunkDocumentId = entry.Metadata.GetValueOrDefault("ChunkDocumentId", null) as string;
           if(includeOriginalText && entry.Document != null)
             searchResult.OriginalText = entry.Document;
           if(entry.Metadata != null && entry.Metadata.ContainsKey("OriginalDocumentId")) {
             searchResult.OriginalDocumentId = entry.Metadata["OriginalDocumentId"].ToString();
+            //TODO: Cache
+            var originalDocResult = await _collectionClient.Get([searchResult.OriginalDocumentId], include: ChromaGetInclude.Documents | ChromaGetInclude.Metadatas);
+            var doc = originalDocResult.FirstOrDefault();
+            searchResult.OriginalDocumentMetadata = doc?.Metadata;
             if(includeOriginalDocumentText && searchResult.OriginalDocumentId != null) {
               var originalDocText = await _cacheService.GetAsync($"doc:{searchResult.OriginalDocumentId}");
               if(string.IsNullOrEmpty(originalDocText)) {
                 // If not found in Redis, retrieve from ChromaDB
-                var originalDocResult = await _collectionClient.Get([searchResult.OriginalDocumentId], include: ChromaGetInclude.Documents | ChromaGetInclude.Metadatas);
                 if(originalDocResult != null && originalDocResult.Count > 0) {
-                  var doc = originalDocResult.FirstOrDefault();
                   originalDocText = doc?.Document ?? "[[ERROR]]";
                   searchResult.OriginalDocumentMetadata = doc?.Metadata;
-                  //if(doc.Metadata != null && doc.Metadata.TryGetValue("named_entities", out object value) && value is string) {
-                  //  var x = value.ToString().Split(" ");
-                  //  var y = namedEntitiesFilter.Split(" ");
-                  //  if(!x.Any(value => y.Contains(value))) {
-                  //    continue;
-                  //  }
-                  //}
                   // Store in Redis for future requests
                   await _cacheService.SetAsync($"doc:{searchResult.OriginalDocumentId}", originalDocText);
                 }
@@ -197,6 +237,9 @@ public class VectorDbService {
   }
 
   public async Task<List<SearchResult>> SearchDocuments(string query,
+    int topResults = 5,
+    bool includeOriginalText = true,
+    bool includeOriginalDocumentText = false,
     string? categoryFilter = null,
     string? keywordsFilter = null,
     string? namedEntitiesFilter = null)
@@ -217,7 +260,15 @@ public class VectorDbService {
       await _cacheService.SetAsync(embeddingCacheKey, JsonSerializer.Serialize(queryEmbedding));
       Console.WriteLine("[VectorDbService] Cached new query embedding.");
     }
-    return await SearchDocuments(queryEmbedding, query, categoryFilter: categoryFilter, keywordsFilter: keywordsFilter, namedEntitiesFilter: namedEntitiesFilter);
+    return await SearchDocuments(queryEmbedding, 
+      query, 
+      topResults,
+      includeOriginalText,
+      includeOriginalDocumentText,
+      categoryFilter: categoryFilter, 
+      keywordsFilter: keywordsFilter, 
+      namedEntitiesFilter: namedEntitiesFilter
+    );
   }
 
   public async Task<bool> ClearChromaDB() {
@@ -250,4 +301,25 @@ public class VectorDbService {
     string context = string.Join("\n\n", filteredSections);
     return context.Length > maxContextSize ? context.Substring(0, maxContextSize) : context;
   }
+
+  public async Task<string?> GetDocumentById(string documentId) {
+    try {
+      // Check Redis cache first
+      var cachedDocument = await _cacheService.GetAsync($"doc:{documentId}");
+      if(!string.IsNullOrEmpty(cachedDocument))
+        return cachedDocument;
+      var results = await _collectionClient.Get([documentId], include: ChromaGetInclude.Documents);
+      var document = results.FirstOrDefault()?.Document;
+      if(document != null) {
+        // Cache the document for future requests
+        await _cacheService.SetAsync($"doc:{documentId}", document);
+      }
+      return document;
+    }
+    catch(Exception ex) {
+      Console.WriteLine($"[VectorDbService] Error retrieving document by ID: {ex.Message}");
+      return null;
+    }
+  }
+
 }

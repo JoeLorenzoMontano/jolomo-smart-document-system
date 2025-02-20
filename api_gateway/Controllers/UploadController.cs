@@ -34,7 +34,11 @@ public class UploadController : ControllerBase {
       var processor = new FileProcessor(filePath);
       string extractedText = processor.ExtractText();
       var dictMetaData = await _ollamaClient.ExtractMetadata(extractedText);
-      bool success = await _vectorDbService.AddDocument(extractedText, dictMetaData);
+      bool success = await _vectorDbService.AddDocument(extractedText, 
+        dictMetaData, 
+        funcSummarizeChunk: async (chunk) => await _ollamaClient.SummarizeTextAsync(chunk), 
+        funcGenQuestionsForChunk: async (chunk) => await _ollamaClient.GeneratePossibleQuestions(chunk)
+      );
       if(!success)
         return StatusCode(500, "Failed to store document in vector database.");
       var response = new {

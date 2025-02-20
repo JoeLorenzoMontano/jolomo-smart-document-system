@@ -1,5 +1,6 @@
 ﻿using api_gateway.Services;
 using ChromaDB.Client;
+using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -35,12 +36,14 @@ builder.Services.AddSingleton(provider => {
 
 // Register VectorDbService and inject ILocalEmbeddingService
 builder.Services.AddSingleton<RedisCacheService>();
-
 // Register Vector Database Service
 builder.Services.AddSingleton<VectorDbService>();
-
 // Register TfidfEmbeddingService as an implementation of ILocalEmbeddingService
 builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
+// Register hosted ChromaWorkerService for VectorDB logic that runs on interval, might add MQTT trigger down the road.
+builder.Services.AddHostedService<ChromaWorkerService>();
+// Register helper classes
+builder.Services.AddScoped<SearchHelpers>();
 
 // Add Configs
 builder.Services.AddOptions();
