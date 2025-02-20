@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\redis\redis.csproj" />
     <ProjectReference Include="..\vectordb\vectordb.csproj" />
   </ItemGroup>
 

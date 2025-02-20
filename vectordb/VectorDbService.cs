@@ -14,16 +14,20 @@ public class VectorDbService {
   private readonly ChromaCollectionClient _collectionClient;
   private readonly ILocalEmbeddingService _embeddingService;
   private readonly RedisCacheService _cacheService;
+  private readonly ElasticSearchService _elasticSearchService;
   private static EmbeddingConfig _embeddingConfig = new();
   private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
-  public VectorDbService(ILocalEmbeddingService embeddingService, IConfiguration configuration, IHttpClientFactory httpClientFactory, RedisCacheService cacheService) {
+  public VectorDbService(ILocalEmbeddingService embeddingService, IConfiguration configuration, 
+    IHttpClientFactory httpClientFactory, RedisCacheService cacheService, ElasticSearchService elasticSearchService) 
+  {
     _collectionName = configuration?["ChromaDB:CollectionName"] ?? "documents";
     _configOptions = new ChromaConfigurationOptions(uri: configuration?["ChromaDB:Uri"] ?? "http://localhost:8000/api/v1/");
     _httpClient = httpClientFactory.CreateClient();
     _chromaClient = new ChromaClient(_configOptions, _httpClient);
     _embeddingService = embeddingService;
     _cacheService = cacheService;
+    _elasticSearchService = elasticSearchService;//TEMP
     var collection = _chromaClient.GetOrCreateCollection(_collectionName).Result;
     _collectionClient = new ChromaCollectionClient(collection, _configOptions, _httpClient);
   }
@@ -89,6 +93,9 @@ public class VectorDbService {
                     { "ChunkDocumentId", chunkDocumentId }
                 });
         }
+        // TEMP: ADDING TO ELASTIC HERE FOR NOW
+        await _elasticSearchService.IndexTextChunkAsync(chunk, dictChunkData);
+        await _elasticSearchService.IndexTextChunkAsync(summary, dictChunkData);
       }
       await _collectionClient.Add(ids, embeddings, documents: documents, metadatas: metadatas);
       Console.WriteLine($"[VectorDbService] Added {chunks.Count} chunked documents + summaries/questions to ChromaDB.");
@@ -145,7 +152,7 @@ public class VectorDbService {
     return chunks;
   }
 
-  public async Task<List<SearchResult>> SearchDocuments(
+  public async Task<List<DocumentSearchResult>> SearchDocuments(
     float[] queryEmbedding,
     string queryText,
     int topResults = 5,
@@ -160,7 +167,7 @@ public class VectorDbService {
       // Check if results are already cached
       var cachedResults = await _cacheService.GetAsync(cacheKey);
       if(!string.IsNullOrEmpty(cachedResults)) {
-        return JsonSerializer.Deserialize<List<SearchResult>>(cachedResults) ?? new List<SearchResult>();
+        return JsonSerializer.Deserialize<List<DocumentSearchResult>>(cachedResults) ?? new List<DocumentSearchResult>();
       }
       // Construct metadata filters for ChromaDB
       var metadataFilters = new Dictionary<string, string>();
@@ -176,10 +183,10 @@ public class VectorDbService {
         //where: ,
         include: ChromaQueryInclude.Metadatas | ChromaQueryInclude.Distances | (includeOriginalText ? ChromaQueryInclude.Documents : ChromaQueryInclude.None)
       );
-      var resultsList = new List<SearchResult>();
+      var resultsList = new List<DocumentSearchResult>();
       foreach(var result in queryResults) {
         foreach(var entry in result) {
-          var searchResult = new SearchResult { Id = entry.Id, Distance = entry.Distance };
+          var searchResult = new DocumentSearchResult { Id = entry.Id, Distance = entry.Distance, Metadatas = entry.Metadata };
           if(entry.Metadata.TryGetValue("IsSourceDocument", out _)) {
             searchResult.DataType = RagDataType.SourceDocument;
           }
@@ -232,11 +239,11 @@ public class VectorDbService {
     }
     catch(Exception ex) {
       Console.WriteLine($"[VectorDbService] Error searching documents: {ex.Message}");
-      return new List<SearchResult> { new SearchResult { Id = "Error", Distance = -1 } };
+      return new List<DocumentSearchResult> { new DocumentSearchResult { Id = "Error", Distance = -1 } };
     }
   }
 
-  public async Task<List<SearchResult>> SearchDocuments(string query,
+  public async Task<List<DocumentSearchResult>> SearchDocuments(string query,
     int topResults = 5,
     bool includeOriginalText = true,
     bool includeOriginalDocumentText = false,
@@ -287,7 +294,7 @@ public class VectorDbService {
     }
   }
 
-  public string ExtractRelevantContext(string query, List<SearchResult> results, int maxContextSize = 2000) {
+  public string ExtractRelevantContext(string query, List<DocumentSearchResult> results, int maxContextSize = 2000) {
     List<string> filteredSections = [];
     foreach(var result in results) {
       if(string.IsNullOrWhiteSpace(result.OriginalDocumentText))

@@ -21,7 +21,7 @@ public class SearchController(VectorDbService vectorDbService, ILocalEmbeddingSe
       string cacheKey = $"search:{query}";
       var cachedResults = await _cacheService.GetAsync(cacheKey);
       if(!string.IsNullOrEmpty(cachedResults)) {
-        return Ok(JsonSerializer.Deserialize<List<SearchResult>>(cachedResults));
+        return Ok(JsonSerializer.Deserialize<List<DocumentSearchResult>>(cachedResults));
       }
       var results = await _vectorDbService.SearchDocuments(query);
       if(results.Count == 0)

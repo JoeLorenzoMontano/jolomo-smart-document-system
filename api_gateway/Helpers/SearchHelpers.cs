@@ -2,10 +2,14 @@
 using System.Text.Json;
 using System.Text;
 
-public class SearchHelpers(VectorDbService vectorDbService, OllamaClient ollamaClient, RedisCacheService cacheService) {
+public class SearchHelpers(VectorDbService vectorDbService, OllamaClient ollamaClient, 
+  RedisCacheService cacheService, RerankerService rerankerService, ElasticSearchService elasticSearchService)
+{
   private readonly VectorDbService _vectorDbService = vectorDbService;
   private readonly OllamaClient _ollamaClient = ollamaClient;
   private readonly RedisCacheService _cacheService = cacheService;
+  private readonly RerankerService _rankerService = rerankerService;
+  private readonly ElasticSearchService _elasticSearchService = elasticSearchService;
 
   public async Task<ActionResult<RAGResponse>> RagSearch(string query, string cacheKey, int topResults = 10, int maxRetries = 3) {
     var data = await GetDocumentData(query, topResults);
@@ -42,20 +46,21 @@ public class SearchHelpers(VectorDbService vectorDbService, OllamaClient ollamaC
     var keywords = dictMetaData?.GetValueOrDefault("keywords") as string ?? string.Empty;
     // Split query into keyword groups for better search
     var queries = await _ollamaClient.GenerateQueryVariations(query);
-    var combinedResults = new List<SearchResult>();
+    var vectorDbResults = new List<DocumentSearchResult>();
+    var keywordResults = new List<ElasticSearchDocument>();
     foreach(var q in queries) {
-      var results = await _vectorDbService.SearchDocuments(q,
+      vectorDbResults.AddRange(await _vectorDbService.SearchDocuments(q,
           categoryFilter: category,
           keywordsFilter: keywords,
           namedEntitiesFilter: namedEntities
-      );
-      combinedResults.AddRange(results);
+      ));
+      keywordResults.AddRange(await _elasticSearchService.SearchTextChunksAsync(q));
     }
-    var distinctResults = combinedResults
+    var distinctResults = await _rankerService.RerankDocuments(vectorDbResults, keywordResults, query, topResults, true);
         //.DistinctBy(x => x.OriginalDocumentId)
-        .OrderByDescending(x => x.Distance)
-        .Take(topResults)
-        .ToList();
+        //.OrderByDescending(x => x.Distance)
+        //.Take(topResults)
+        //.ToList();
     return new DocumentDataResponse() {
        DictMetaData = dictMetaData,
        Documents = distinctResults,
@@ -63,7 +68,7 @@ public class SearchHelpers(VectorDbService vectorDbService, OllamaClient ollamaC
     };
   }
 
-  public async Task<string> GetRagContext(List<SearchResult> documents) {
+  public async Task<string> GetRagContext(List<DocumentSearchResult> documents) {
     var sb = new StringBuilder(); ;
     foreach(var result in documents) {
       switch(result.DataType) {
@@ -99,7 +104,7 @@ public class SearchHelpers(VectorDbService vectorDbService, OllamaClient ollamaC
 }
 
 public class DocumentDataResponse {
-  public List<SearchResult> Documents { get; set; } = new();
+  public List<DocumentSearchResult> Documents { get; set; } = new();
   public Dictionary<string, object>? DictMetaData { get; set; }
   public List<string>? Queries { get; set; }
 }

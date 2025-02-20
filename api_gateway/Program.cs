@@ -2,6 +2,7 @@
 using ChromaDB.Client;
 using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using Microsoft.OpenApi.Models;
+using Nest;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,16 +35,28 @@ builder.Services.AddSingleton(provider => {
   );
 });
 
+// Register ElasticSearch Client
+builder.Services.AddSingleton<IElasticClient>(sp => {
+  var settings = new ConnectionSettings(new Uri("http://localhost:9200"))
+      .DefaultIndex("documents"); // Default index
+  return new ElasticClient(settings);
+});
+
+// Register ElasticSearchService as a singleton
+builder.Services.AddSingleton<ElasticSearchService>();
+
 // Register VectorDbService and inject ILocalEmbeddingService
 builder.Services.AddSingleton<RedisCacheService>();
 // Register Vector Database Service
 builder.Services.AddSingleton<VectorDbService>();
-// Register TfidfEmbeddingService as an implementation of ILocalEmbeddingService
-builder.Services.AddSingleton<ILocalEmbeddingService, TfidfEmbeddingService>();
+// Register ILocalEmbeddingService 
+builder.Services.AddSingleton<ILocalEmbeddingService, OnnxEmbeddingService>();
 // Register hosted ChromaWorkerService for VectorDB logic that runs on interval, might add MQTT trigger down the road.
 builder.Services.AddHostedService<ChromaWorkerService>();
 // Register helper classes
 builder.Services.AddScoped<SearchHelpers>();
+// Register 
+builder.Services.AddScoped<RerankerService>();
 
 // Add Configs
 builder.Services.AddOptions();

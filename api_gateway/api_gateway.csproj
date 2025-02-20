@@ -16,14 +16,21 @@
     <PackageReference Include="MailKit" Version="4.10.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
     <PackageReference Include="MQTTnet" Version="5.0.1.1416" />
+    <PackageReference Include="NEST" Version="7.17.5" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="Tesseract" Version="5.2.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\mqtt_service\mqtt_service.csproj" />
-    <ProjectReference Include="..\ollama\ollama.csproj" />
     <ProjectReference Include="..\vectordb\vectordb.csproj" />
+    <ProjectReference Include="..\xshared\xshared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="models\miniLM.onnx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
   </ItemGroup>
 
 </Project>
